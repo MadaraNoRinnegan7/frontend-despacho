@@ -1,0 +1,23 @@
+# Excluir node_modules del contexto de build de Docker
+# Sin esto, Docker copiaría ~200MB de dependencias innecesariamente
+node_modules
+
+# Archivos de build locales (se generan dentro del contenedor)
+dist
+
+# Archivos de entorno (contienen secretos, nunca van en la imagen)
+.env
+.env.local
+.env.production
+
+# Archivos de control de versiones
+.git
+.gitignore
+
+# Archivos de desarrollo y documentación
+README.md
+*.md
+
+# Logs
+*.log
+npm-debug.log*

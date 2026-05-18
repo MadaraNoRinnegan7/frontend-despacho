@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  frontend-despacho:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: frontend_despacho
+    ports:
+      - "80:80"          # Puerto 80 del host -> Puerto 80 del contenedor
+    environment:
+      # URL del backend (usar IP privada de la EC2 backend en producción)
+      - VITE_BACKEND_URL=${BACKEND_URL:-http://localhost:8081}
+    restart: unless-stopped   # Se reinicia solo si falla, no si se detiene manualmente
+    networks:
+      - frontend_network
+
+networks:
+  frontend_network:
+    driver: bridge
