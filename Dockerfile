@@ -15,6 +15,8 @@ COPY package*.json ./
 RUN npm ci
 
 # Ahora copiamos el resto del código fuente
+ARG VITE_BACKEND_URL
+ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 COPY . .
 
 # Construye la app para producción (genera la carpeta /app/dist)
