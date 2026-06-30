@@ -48,7 +48,7 @@ RUN chown -R appuser:appgroup /usr/share/nginx/html \
 USER appuser
 
 # Nginx escucha en el puerto 80
-EXPOSE 80
+EXPOSE 8080
 
 # Comando para iniciar Nginx en primer plano (modo daemon off para Docker)
 CMD ["nginx", "-g", "daemon off;"]
