@@ -1,71 +1,44 @@
-name: CI/CD - Frontend Despacho
+name: Deploy Frontend to ECS
 
-# El pipeline se activa SOLO cuando hay push en la rama 'deploy'
-# La rama 'main' es para desarrollo; 'deploy' es para producción
 on:
   push:
-    branches:
-      - deploy
+    branches: [deploy]
 
 jobs:
-  build-and-deploy:
-    name: Build, Push y Deploy
-    runs-on: ubuntu-latest   # GitHub proporciona este runner gratis
+  deploy:
+    runs-on: ubuntu-latest
 
     steps:
-      # PASO 1: Descargar el código del repositorio en el runner
-      - name: Checkout del código
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # PASO 2: Autenticarse en Docker Hub con las credenciales secretas
-      # Los secrets NUNCA aparecen en los logs (GitHub los enmascara como ***)
-      - name: Login en Docker Hub
-        uses: docker/login-action@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      # PASO 3: Construir la imagen Docker y subirla a Docker Hub
-      # Se sube con dos tags:
-      #   - 'latest': siempre apunta a la versión más reciente
-      #   - SHA del commit: permite rollback a una versión específica
-      - name: Build y Push de la imagen Docker
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/frontend-despacho:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/frontend-despacho:${{ github.sha }}
-          build-args: |
-            VITE_BACKEND_URL=${{ secrets.BACKEND_URL }}
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-      # PASO 4: Conectarse por SSH a la EC2 y actualizar el contenedor
-      # La EC2 descarga la imagen nueva de Docker Hub y reinicia el contenedor
-      - name: Deploy en EC2 Frontend
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_FRONTEND_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            # Descargar la imagen más reciente de Docker Hub
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/frontend-despacho:latest
+      - name: Build, tag and push image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --build-arg VITE_BACKEND_URL=${{ secrets.BACKEND_URL }} \
+            -t $ECR_REGISTRY/frontend-despacho:latest \
+            -t $ECR_REGISTRY/frontend-despacho:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/frontend-despacho:latest
+          docker push $ECR_REGISTRY/frontend-despacho:$IMAGE_TAG
 
-            # Detener y eliminar el contenedor anterior (si existe)
-            docker stop frontend_despacho || true
-            docker rm frontend_despacho || true
-
-            # Levantar el nuevo contenedor con la imagen actualizada
-            docker run -d \
-              --name frontend_despacho \
-              --restart unless-stopped \
-              -p 80:80 \
-              -e VITE_BACKEND_URL=${{ secrets.BACKEND_URL }} \
-              ${{ secrets.DOCKERHUB_USERNAME }}/frontend-despacho:latest
-
-            # Eliminar imágenes antiguas para liberar espacio en disco
-            docker image prune -f
-
-            echo "Deploy completado: $(date)"
-            docker ps | grep frontend_despacho
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster innovatech-cluster \
+            --service frontend-service \
+            --force-new-deployment
